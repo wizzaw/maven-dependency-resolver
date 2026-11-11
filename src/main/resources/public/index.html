@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maven Air-Gap Dependency Bundler</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container header-inner">
+            <div class="brand">
+                <div class="brand-icon" aria-hidden="true">📦</div>
+                <div>
+                    <h1>Maven Air-Gap Dependency Bundler</h1>
+                    <p class="subtitle">Resolve transitive JARs, Parent POMs, BOMs, Sources &amp; Javadocs for offline Nexus sync</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button type="button" id="openGuideBtn" class="btn btn-secondary btn-sm">
+                    Nexus Import Guide
+                </button>
+                <span id="serverStatusBadge" class="status-badge" title="Checking server status...">
+                    Connecting...
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container main-grid">
+        <!-- STEP 1: INPUT & CONFIGURATION -->
+        <section class="card" aria-labelledby="step1-heading">
+            <div class="card-header">
+                <div class="step-title">
+                    <span class="step-number">1</span>
+                    <h2 id="step1-heading">Provide Maven Coordinates or XML</h2>
+                </div>
+                <div class="preset-actions">
+                    <button type="button" class="btn btn-ghost btn-xs" data-preset="gav">GAV Example</button>
+                    <button type="button" class="btn btn-ghost btn-xs" data-preset="xml">XML &lt;dependency&gt;</button>
+                    <button type="button" class="btn btn-ghost btn-xs" data-preset="pom">Full pom.xml</button>
+                    <label class="btn btn-ghost btn-xs file-upload-label">
+                        Load File
+                        <input type="file" id="pomFileInput" accept=".xml,.pom,.txt" hidden>
+                    </label>
+                </div>
+            </div>
+
+            <form id="resolveForm" novalidate>
+                <div class="form-group">
+                    <label for="dependencyInput" class="sr-only">Maven Coordinates or XML</label>
+                    <textarea
+                        id="dependencyInput"
+                        name="dependencyInput"
+                        rows="10"
+                        required
+                        spellcheck="false"
+                        placeholder="# Enter one or more GAV coordinates (groupId:artifactId:version)&#10;org.apache.commons:commons-lang3:3.17.0&#10;com.fasterxml.jackson.core:jackson-databind:2.18.1&#10;&#10;<!-- Or paste XML <dependency> blocks or a full pom.xml -->&#10;<dependency>&#10;  <groupId>org.slf4j</groupId>&#10;  <artifactId>slf4j-api</artifactId>&#10;  <version>2.0.16</version>&#10;</dependency>"
+                    ></textarea>
+                    <div class="input-hint">
+                        <span>Supports <code>groupId:artifactId:version</code>, <code>&lt;dependency&gt;</code> blocks, or full <code>pom.xml</code></span>
+                        <span id="quotaHint">Max 50 root inputs / 500 resolved artifacts</span>
+                    </div>
+                </div>
+
+                <div class="options-grid">
+                    <fieldset class="option-box">
+                        <legend>Dependency Scopes</legend>
+                        <div class="checkbox-row">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="scope" value="compile" checked>
+                                <span>compile</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="scope" value="runtime" checked>
+                                <span>runtime</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="scope" value="provided">
+                                <span>provided</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="scope" value="test">
+                                <span>test</span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="option-box">
+                        <legend>Bundle Attachments</legend>
+                        <div class="checkbox-row">
+                            <label class="checkbox-label" title="Include -sources.jar when available on Maven Central">
+                                <input type="checkbox" id="includeSources" checked>
+                                <span>Sources (<code>-sources.jar</code>)</span>
+                            </label>
+                            <label class="checkbox-label" title="Include -javadoc.jar when available on Maven Central">
+                                <input type="checkbox" id="includeJavadoc" checked>
+                                <span>Javadocs (<code>-javadoc.jar</code>)</span>
+                            </label>
+                            <label class="checkbox-label" title="Generate and include .sha1 checksum files">
+                                <input type="checkbox" id="includeSha1" checked>
+                                <span>Checksums (<code>.sha1</code>)</span>
+                            </label>
+                            <label class="checkbox-label" title="Resolve <plugin> blocks if present in XML">
+                                <input type="checkbox" id="includePlugins" checked>
+                                <span>Maven Plugins</span>
+                            </label>
+                        </div>
+                    </fieldset>
+                </div>
+
+                <div id="resolveErrorBox" class="alert alert-error" hidden role="alert"></div>
+
+                <div class="form-actions">
+                    <button type="button" id="clearBtn" class="btn btn-secondary">Clear</button>
+                    <button type="submit" id="resolveBtn" class="btn btn-primary">
+                        <span class="btn-text">Resolve Dependency Graph</span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- STEP 2: PREVIEW & STREAM DOWNLOAD -->
+        <section class="card" id="step2Section" aria-labelledby="step2-heading">
+            <div class="card-header">
+                <div class="step-title">
+                    <span class="step-number">2</span>
+                    <h2 id="step2-heading">Review Resolved Graph &amp; Download ZIP</h2>
+                </div>
+                <span id="resolutionTiming" class="timing-pill" hidden></span>
+            </div>
+
+            <!-- Empty State before Step 1 runs -->
+            <div id="emptyPreviewState" class="empty-state">
+                <div class="empty-icon" aria-hidden="true">🔍</div>
+                <h3>No Dependencies Resolved Yet</h3>
+                <p>Enter your Maven coordinates or XML on the left and click <strong>Resolve Dependency Graph</strong> to inspect all transitive JARs, parent POMs, and BOMs before downloading.</p>
+            </div>
+
+            <!-- Resolved Content State -->
+            <div id="resolvedContent" hidden>
+                <!-- Summary Metrics -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <span class="metric-label">Total GAVs</span>
+                        <strong class="metric-value" id="metricTotal">0</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Direct &amp; Transitive JARs</span>
+                        <strong class="metric-value" id="metricJars">0</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Parent &amp; BOM POMs</span>
+                        <strong class="metric-value" id="metricPoms">0</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Selected for ZIP</span>
+                        <strong class="metric-value" id="metricSelected">0</strong>
+                    </div>
+                </div>
+
+                <!-- Warnings Banner -->
+                <div id="warningsBox" class="alert alert-warning" hidden></div>
+
+                <!-- Layout Selection & Download Controls -->
+                <div class="download-panel">
+                    <div class="layout-selector">
+                        <span class="section-label">Select ZIP Directory Structure:</span>
+                        <div class="layout-cards">
+                            <label class="layout-option">
+                                <input type="radio" name="bundleLayout" value="M2" checked>
+                                <div class="layout-card-body">
+                                    <div class="layout-card-title">
+                                        <strong>Standard <code>m2</code> Layout</strong>
+                                        <span class="badge badge-recommended">Recommended</span>
+                                    </div>
+                                    <p><code>repository/group/id/artifact/ver/...</code> — Ready for direct HTTP PUT to Nexus or local <code>.m2</code> drop-in.</p>
+                                </div>
+                            </label>
+                            <label class="layout-option">
+                                <input type="radio" name="bundleLayout" value="FLAT">
+                                <div class="layout-card-body">
+                                    <div class="layout-card-title">
+                                        <strong>Flat Directory Layout</strong>
+                                    </div>
+                                    <p><code>artifacts/group.id__artifact-ver.jar</code> — Single flat folder with collision-safe filenames &amp; mapped upload script.</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="download-action-bar">
+                        <div id="streamStatusBox" class="stream-status" hidden>
+                            <div class="spinner" aria-hidden="true"></div>
+                            <span id="streamStatusText">Streaming artifacts from Maven Central into ZIP...</span>
+                        </div>
+                        <button type="button" id="downloadZipBtn" class="btn btn-success btn-lg">
+                            ⬇ Download Air-Gap Bundle (.zip)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filter & Artifact Table -->
+                <div class="table-toolbar">
+                    <input
+                        type="search"
+                        id="artifactFilterInput"
+                        class="search-input"
+                        placeholder="Filter resolved artifacts by groupId, artifactId, or version..."
+                        aria-label="Filter resolved artifacts"
+                    >
+                    <div class="role-filters" role="group" aria-label="Filter by artifact role">
+                        <button type="button" class="filter-pill active" data-role="ALL">All</button>
+                        <button type="button" class="filter-pill" data-role="DIRECT">Direct</button>
+                        <button type="button" class="filter-pill" data-role="TRANSITIVE">Transitive</button>
+                        <button type="button" class="filter-pill" data-role="PARENT_POM">Parent POMs</button>
+                        <button type="button" class="filter-pill" data-role="BOM_POM">BOMs</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="artifact-table">
+                        <thead>
+                            <tr>
+                                <th class="col-check">
+                                    <input type="checkbox" id="selectAllCheckbox" checked aria-label="Select all artifacts">
+                                </th>
+                                <th>Role</th>
+                                <th>Coordinate (<code>groupId:artifactId:version</code>)</th>
+                                <th>Packaging</th>
+                                <th>Scope</th>
+                            </tr>
+                        </thead>
+                        <tbody id="artifactTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Air-Gap Nexus Import Guide Modal (<dialog>) -->
+    <dialog id="nexusGuideDialog" class="modal-dialog">
+        <div class="modal-header">
+            <h2>How to Push Bundle to an Air-Gapped Nexus</h2>
+            <button type="button" id="closeGuideBtn" class="btn-close" aria-label="Close dialog">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p>Every downloaded ZIP bundle automatically includes <code>upload.sh</code> (Linux/macOS), <code>upload.ps1</code> (Windows PowerShell), <code>manifest.json</code>, and <code>resolution-report.txt</code>.</p>
+
+            <h3>1. Transfer &amp; Extract in Air-Gap</h3>
+            <pre><code>unzip maven-airgap-bundle-*.zip -d maven-bundle
+cd maven-bundle</code></pre>
+
+            <h3>2. Linux / macOS (Bash + curl)</h3>
+            <p>Requires only <code>curl</code> (no Maven installation needed on the bastion host). Works identically for both <strong>M2</strong> and <strong>FLAT</strong> layouts:</p>
+            <pre><code>chmod +x upload.sh
+
+# Optional: preview all PUT requests first
+DRY_RUN=true NEXUS_URL="https://nexus.internal/repository/maven-releases" ./upload.sh
+
+# Execute upload to Nexus Maven 2 Hosted Repository
+NEXUS_URL="https://nexus.internal/repository/maven-releases" \
+NEXUS_USER="admin" \
+NEXUS_PASS="your-password" \
+./upload.sh</code></pre>
+
+            <h3>3. Windows (PowerShell)</h3>
+            <pre><code>.\upload.ps1 `
+  -NexusUrl "https://nexus.internal/repository/maven-releases" `
+  -Username "admin" `
+  -Password "your-password"</code></pre>
+        </div>
+    </dialog>
+
+    <script src="/app.js"></script>
+</body>
+</html>
