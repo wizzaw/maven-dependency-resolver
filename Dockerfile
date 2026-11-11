@@ -24,6 +24,6 @@ EXPOSE 8080
 
 ENV PORT=8080 \
     LOCAL_POM_CACHE_DIR=/tmp/maven-airgap-bundler-cache \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -Djava.awt.headless=true"
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -XX:ActiveProcessorCount=4 -Djava.awt.headless=true"
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

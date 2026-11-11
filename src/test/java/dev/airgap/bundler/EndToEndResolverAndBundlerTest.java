@@ -199,6 +199,28 @@ class EndToEndResolverAndBundlerTest {
         assertTrue(flatEntries.containsKey("artifacts/com.acme__acme-parent-1.0.0.pom"));
         assertTrue(flatEntries.containsKey("artifacts/com.acme__acme-bom-1.0.0.pom"));
         assertTrue(flatEntries.get("upload.sh").contains("com/acme/acme-parent/1.0.0/acme-parent-1.0.0.pom"));
+
+        // Step 3: Verify Javalin HTTP server responds to GET / and GET /api/health
+        var app = App.createApp(config).start(0);
+        try {
+            int port = app.port();
+            var client = java.net.http.HttpClient.newHttpClient();
+            var healthRes = client.send(
+                    java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + port + "/api/health")).GET().build(),
+                    java.net.http.HttpResponse.BodyHandlers.ofString()
+            );
+            assertEquals(200, healthRes.statusCode());
+            assertTrue(healthRes.body().contains("\"status\":\"UP\""));
+
+            var indexRes = client.send(
+                    java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + port + "/")).GET().build(),
+                    java.net.http.HttpResponse.BodyHandlers.ofString()
+            );
+            assertEquals(200, indexRes.statusCode());
+            assertTrue(indexRes.body().contains("Maven Air-Gap Dependency Bundler"));
+        } finally {
+            app.stop();
+        }
     }
 
     private Map<String, String> readZipEntries(byte[] zipBytes) throws Exception {

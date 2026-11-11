@@ -43,7 +43,6 @@ public class App {
         RateLimiter rateLimiter = new RateLimiter(config.rateLimitPerMinute(), config.maxConcurrentStreams());
 
         Javalin app = Javalin.create(javalinConfig -> {
-            javalinConfig.useVirtualThreads = true;
             javalinConfig.staticFiles.add("/public", Location.CLASSPATH);
             javalinConfig.http.maxRequestSize = 2 * 1024 * 1024L; // 2 MB max payload
         });
